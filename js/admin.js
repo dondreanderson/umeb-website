@@ -146,10 +146,7 @@ async function loadAdminGallery() {
             <img src="${photo.url}" alt="${photo.alt_text}">
             <div class="gallery-item-actions">
                 <button class="btn-action btn-replace" onclick="openReplaceModal('${photo.id}', '${photo.url}')" title="Replace Photo">
-                    <i class="fas fa-exchange-alt"></i>
-                </button>
-                <button class="btn-action btn-delete" onclick="deletePhoto('${photo.id}', '${photo.url}')" title="Delete Photo">
-                    <i class="fas fa-trash"></i>
+                    <i class="fas fa-exchange-alt"></i> Replace
                 </button>
             </div>
         </div>
