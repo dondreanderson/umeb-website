@@ -1,7 +1,7 @@
 // Supabase Configuration
 const SUPABASE_URL = 'https://fkhmwddkosjzatwuxmnh.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZraG13ZGRrb3NqemF0d3V4bW5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyNDEwOTksImV4cCI6MjA5NTgxNzA5OX0.ogtAR9ibm8jeyL-EBqlKUBUI7pUGL_UXzseA8RsmDcA';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // UI Elements
 const authSection = document.getElementById('auth-section');
@@ -14,7 +14,7 @@ const uploadStatus = document.getElementById('upload-status');
 
 // Check Auth State on Load
 async function checkAuth() {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await supabaseClient.auth.getSession();
     if (session) {
         showDashboard();
     } else {
@@ -31,7 +31,7 @@ loginForm.addEventListener('submit', async (e) => {
     
     errorDiv.textContent = 'Logging in...';
     
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
         email: email,
         password: password,
     });
@@ -46,7 +46,7 @@ loginForm.addEventListener('submit', async (e) => {
 
 // Logout
 async function logout() {
-    await supabase.auth.signOut();
+    await supabaseClient.auth.signOut();
     showLogin();
 }
 
@@ -87,19 +87,19 @@ uploadForm.addEventListener('submit', async (e) => {
         const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
         const filePath = `public/${fileName}`;
 
-        const { error: uploadError } = await supabase.storage
+        const { error: uploadError } = await supabaseClient.storage
             .from('gallery')
             .upload(filePath, file);
 
         if (uploadError) throw uploadError;
 
         // 2. Get Public URL
-        const { data: { publicUrl } } = supabase.storage
+        const { data: { publicUrl } } = supabaseClient.storage
             .from('gallery')
             .getPublicUrl(filePath);
 
         // 3. Insert into Database
-        const { error: dbError } = await supabase
+        const { error: dbError } = await supabaseClient
             .from('photos')
             .insert([
                 { url: publicUrl, alt_text: altText }
@@ -126,7 +126,7 @@ uploadForm.addEventListener('submit', async (e) => {
 async function loadAdminGallery() {
     adminGalleryGrid.innerHTML = '<p>Loading photos...</p>';
     
-    const { data: photos, error } = await supabase
+    const { data: photos, error } = await supabaseClient
         .from('photos')
         .select('*')
         .order('created_at', { ascending: false });
@@ -161,11 +161,11 @@ async function deletePhoto(id, url) {
         if (urlParts.length > 1) {
             const filePath = urlParts[1];
             // 1. Delete from Storage
-            await supabase.storage.from('gallery').remove([filePath]);
+            await supabaseClient.storage.from('gallery').remove([filePath]);
         }
 
         // 2. Delete from Database
-        const { error } = await supabase
+        const { error } = await supabaseClient
             .from('photos')
             .delete()
             .eq('id', id);
