@@ -144,9 +144,14 @@ async function loadAdminGallery() {
     adminGalleryGrid.innerHTML = photos.map(photo => `
         <div class="admin-gallery-item" id="photo-${photo.id}">
             <img src="${photo.url}" alt="${photo.alt_text}">
-            <button class="btn-delete" onclick="deletePhoto('${photo.id}', '${photo.url}')" title="Delete Photo">
-                <i class="fas fa-trash"></i>
-            </button>
+            <div class="gallery-item-actions">
+                <button class="btn-action btn-replace" onclick="openReplaceModal('${photo.id}', '${photo.url}')" title="Replace Photo">
+                    <i class="fas fa-exchange-alt"></i>
+                </button>
+                <button class="btn-action btn-delete" onclick="deletePhoto('${photo.id}', '${photo.url}')" title="Delete Photo">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
         </div>
     `).join('');
 }
@@ -183,6 +188,143 @@ async function deletePhoto(id, url) {
         alert(`Error deleting photo: ${error.message}`);
     }
 }
+
+// --- Replace Modal Logic ---
+let currentReplaceId = null;
+let currentOriginalUrl = null;
+let originalAspectRatio = null;
+
+const replaceModal = document.getElementById('replace-modal');
+const originalPreview = document.getElementById('original-preview');
+const newPreview = document.getElementById('new-preview');
+const originalDims = document.getElementById('original-dims');
+const newDims = document.getElementById('new-dims');
+const replaceFileInput = document.getElementById('replace-file');
+const replaceAltInput = document.getElementById('replace-alt');
+const validationMessage = document.getElementById('validation-message');
+const confirmReplaceBtn = document.getElementById('confirm-replace-btn');
+const replaceForm = document.getElementById('replace-form');
+
+function openReplaceModal(id, url) {
+    currentReplaceId = id;
+    currentOriginalUrl = url;
+    
+    // Reset modal state
+    replaceForm.reset();
+    newPreview.style.display = 'none';
+    newPreview.src = '';
+    newDims.textContent = '';
+    validationMessage.textContent = '';
+    confirmReplaceBtn.disabled = true;
+
+    // Load original image to calculate its aspect ratio and dimensions
+    originalPreview.src = url;
+    originalPreview.onload = function() {
+        const width = originalPreview.naturalWidth;
+        const height = originalPreview.naturalHeight;
+        originalAspectRatio = width / height;
+        originalDims.textContent = `${width} x ${height} px`;
+    };
+
+    replaceModal.classList.remove('hidden');
+}
+
+function closeReplaceModal() {
+    replaceModal.classList.add('hidden');
+    currentReplaceId = null;
+    currentOriginalUrl = null;
+    originalAspectRatio = null;
+}
+
+// Validate Selected File
+replaceFileInput.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) {
+        newPreview.style.display = 'none';
+        confirmReplaceBtn.disabled = true;
+        validationMessage.textContent = '';
+        return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    newPreview.src = objectUrl;
+    newPreview.style.display = 'block';
+
+    newPreview.onload = function() {
+        const width = newPreview.naturalWidth;
+        const height = newPreview.naturalHeight;
+        const newAspectRatio = width / height;
+        newDims.textContent = `${width} x ${height} px`;
+
+        // Check compatibility (tolerance of 0.05 for floating point inaccuracies)
+        const diff = Math.abs(newAspectRatio - originalAspectRatio);
+        
+        if (diff > 0.05) {
+            validationMessage.textContent = '❌ Incompatible Aspect Ratio. Please select an image with a matching shape.';
+            validationMessage.style.color = '#e74c3c';
+            confirmReplaceBtn.disabled = true;
+        } else {
+            validationMessage.textContent = '✅ Image is compatible!';
+            validationMessage.style.color = '#2ecc71';
+            confirmReplaceBtn.disabled = false;
+        }
+    };
+});
+
+// Submit Replacement
+replaceForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (confirmReplaceBtn.disabled) return;
+
+    const file = replaceFileInput.files[0];
+    const altText = replaceAltInput.value;
+    
+    confirmReplaceBtn.disabled = true;
+    confirmReplaceBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Replacing...';
+
+    try {
+        // 1. Upload new image to Storage
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+        const filePath = `public/${fileName}`;
+
+        const { error: uploadError } = await supabaseClient.storage
+            .from('gallery')
+            .upload(filePath, file);
+
+        if (uploadError) throw uploadError;
+
+        // 2. Get new public URL
+        const { data: { publicUrl } } = supabaseClient.storage
+            .from('gallery')
+            .getPublicUrl(filePath);
+
+        // 3. Update database record
+        const { error: dbError } = await supabaseClient
+            .from('photos')
+            .update({ url: publicUrl, alt_text: altText })
+            .eq('id', currentReplaceId);
+
+        if (dbError) throw dbError;
+
+        // 4. Try to delete the old image from Storage (if applicable)
+        const oldUrlParts = currentOriginalUrl.split('/gallery/');
+        if (oldUrlParts.length > 1) {
+            const oldFilePath = oldUrlParts[1];
+            await supabaseClient.storage.from('gallery').remove([oldFilePath]);
+        }
+
+        // Success
+        closeReplaceModal();
+        loadAdminGallery();
+
+    } catch (error) {
+        validationMessage.textContent = `Error: ${error.message}`;
+        validationMessage.style.color = '#e74c3c';
+        confirmReplaceBtn.disabled = false;
+        confirmReplaceBtn.innerHTML = '<i class="fas fa-exchange-alt"></i> Confirm Replacement';
+    }
+});
 
 // Init
 checkAuth();
