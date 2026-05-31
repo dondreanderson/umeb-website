@@ -126,71 +126,110 @@ document.addEventListener('DOMContentLoaded', function() {
     checkScroll(); // Check on page load
     
     // ========================================
-    // Gallery Lightbox
+    // Dynamic Gallery & Lightbox
     // ========================================
-    const galleryItems = document.querySelectorAll('.gallery-item');
+    const SUPABASE_URL = 'https://fkhmwddkosjzatwuxmnh.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZraG13ZGRrb3NqemF0d3V4bW5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyNDEwOTksImV4cCI6MjA5NTgxNzA5OX0.ogtAR9ibm8jeyL-EBqlKUBUI7pUGL_UXzseA8RsmDcA';
+    let supabase = null;
+    let galleryImages = [];
+    
+    // Lightbox elements
     const lightbox = document.getElementById('lightbox');
     const lightboxImg = document.getElementById('lightbox-img');
     const lightboxClose = document.querySelector('.lightbox-close');
     const lightboxPrev = document.querySelector('.lightbox-prev');
     const lightboxNext = document.querySelector('.lightbox-next');
-    
     let currentImageIndex = 0;
-    const galleryImages = Array.from(galleryItems).map(item => item.getAttribute('data-image'));
-    
-    // Open lightbox
-    galleryItems.forEach((item, index) => {
-        item.addEventListener('click', function() {
-            currentImageIndex = index;
-            openLightbox(galleryImages[currentImageIndex]);
-        });
-    });
-    
-    function openLightbox(imageSrc) {
-        lightboxImg.src = imageSrc;
+
+    if (window.supabase) {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        loadPublicGallery();
+    }
+
+    async function loadPublicGallery() {
+        const grid = document.getElementById('dynamic-gallery-grid');
+        if (!grid) return;
+        
+        grid.innerHTML = '<p style="grid-column: 1/-1; text-align: center;">Loading photos...</p>';
+        
+        try {
+            const { data: photos, error } = await supabase
+                .from('photos')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            
+            if (photos.length === 0) {
+                grid.innerHTML = '<p style="grid-column: 1/-1; text-align: center;">Gallery coming soon!</p>';
+                return;
+            }
+
+            galleryImages = photos.map(p => p.url);
+
+            grid.innerHTML = photos.map((photo, index) => `
+                <div class="gallery-item animate-on-scroll visible" onclick="openLightbox(${index})">
+                    <img src="${photo.url}" alt="${photo.alt_text || 'UMEB Event Photo'}" loading="lazy">
+                    <div class="gallery-overlay">
+                        <i class="fas fa-search-plus"></i>
+                    </div>
+                </div>
+            `).join('');
+
+        } catch (error) {
+            console.error('Error loading gallery:', error);
+            grid.innerHTML = '<p style="grid-column: 1/-1; text-align: center;">Failed to load photos. Please try again later.</p>';
+        }
+    }
+
+    // Lightbox Functions
+    window.openLightbox = function(index) {
+        currentImageIndex = index;
+        lightboxImg.src = galleryImages[currentImageIndex];
         lightbox.classList.add('active');
         document.body.style.overflow = 'hidden';
-    }
-    
-    // Close lightbox
-    lightboxClose.addEventListener('click', closeLightbox);
-    lightbox.addEventListener('click', function(e) {
-        if (e.target === lightbox) {
-            closeLightbox();
-        }
-    });
+    };
     
     function closeLightbox() {
         lightbox.classList.remove('active');
         document.body.style.overflow = 'auto';
     }
     
-    // Navigate through gallery
-    lightboxPrev.addEventListener('click', function(e) {
-        e.stopPropagation();
-        currentImageIndex = (currentImageIndex - 1 + galleryImages.length) % galleryImages.length;
-        lightboxImg.src = galleryImages[currentImageIndex];
-    });
+    if (lightboxClose) lightboxClose.addEventListener('click', closeLightbox);
+    if (lightbox) {
+        lightbox.addEventListener('click', function(e) {
+            if (e.target === lightbox) closeLightbox();
+        });
+    }
     
-    lightboxNext.addEventListener('click', function(e) {
-        e.stopPropagation();
-        currentImageIndex = (currentImageIndex + 1) % galleryImages.length;
-        lightboxImg.src = galleryImages[currentImageIndex];
-    });
-    
-    // Keyboard navigation for lightbox
-    document.addEventListener('keydown', function(e) {
-        if (lightbox.classList.contains('active')) {
-            if (e.key === 'Escape') {
-                closeLightbox();
-            } else if (e.key === 'ArrowLeft') {
-                lightboxPrev.click();
-            } else if (e.key === 'ArrowRight') {
-                lightboxNext.click();
+    if (lightboxPrev) {
+        lightboxPrev.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (galleryImages.length > 0) {
+                currentImageIndex = (currentImageIndex - 1 + galleryImages.length) % galleryImages.length;
+                lightboxImg.src = galleryImages[currentImageIndex];
             }
+        });
+    }
+    
+    if (lightboxNext) {
+        lightboxNext.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (galleryImages.length > 0) {
+                currentImageIndex = (currentImageIndex + 1) % galleryImages.length;
+                lightboxImg.src = galleryImages[currentImageIndex];
+            }
+        });
+    }
+    
+    document.addEventListener('keydown', function(e) {
+        if (lightbox && lightbox.classList.contains('active')) {
+            if (e.key === 'Escape') closeLightbox();
+            else if (e.key === 'ArrowLeft' && lightboxPrev) lightboxPrev.click();
+            else if (e.key === 'ArrowRight' && lightboxNext) lightboxNext.click();
         }
     });
-    
+
     // ========================================
     // Contact Form
     // ========================================
